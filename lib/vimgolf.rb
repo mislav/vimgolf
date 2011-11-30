@@ -1,6 +1,5 @@
 require 'fileutils'
 require 'net/http'
-require 'strscan'
 require 'yaml'
 require 'thor'
 

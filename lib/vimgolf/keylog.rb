@@ -1,30 +1,48 @@
+require 'strscan'
+require 'forwardable'
+
 module VimGolf
-  class Session < Array
-    def to_s(sep = '')
-      @log.join(sep)
-    end
-  end
-
   class Keylog
-    def self.parse(input)
-      session = Session.new
-      scan(input) {|s| session << s }
-      session
-    end
+    extend Forwardable
 
-    def self.convert(input)
-      parse(input).join('')
+    def self.parse(input)
+      keys = []
+      scan(input) {|s| keys << s }
+      self.new(keys)
     end
 
     def self.score(input)
-      keys = 0
-      scan(input) {|s| keys += 1 }
-      keys
+      parse(input).score
     end
 
+    def initialize(keys)
+      @keys = keys
+    end
+
+    def to_s
+      @keys.join('')
+    end
+
+    def_delegator :@keys, :size, :score
+    def_delegator :@keys, :each
+    include Enumerable
+
+    # parse key logs where special characters are already encoded as "<...>"
+    def self.parse_encoded(input)
+      scanner = StringScanner.new(input)
+      keys = []
+
+      until scanner.eos?
+        keys << scanner.getch
+        keys.last << scanner.scan_until(/>/) if keys.last == '<'
+      end
+
+      self.new(keys)
+    end
+
+    # scan bytes in raw key log
     def self.scan(input)
       scanner = StringScanner.new(input)
-      output = ""
 
       until scanner.eos?
         c = scanner.get_byte
