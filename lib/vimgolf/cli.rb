@@ -65,14 +65,7 @@ module VimGolf
       begin
         type = download(id)
 
-        # - n - no swap file, memory only editing
-        # - +0 - always start on line 0
-        # - --noplugin - don't load any plugins, lets be fair!
-        # -i NONE - don't load .viminfo (for saved macros and the like)
-        # - u - load vimgolf .vimrc to level the playing field
-        vimcmd = "#{GOLFVIM} -Z --servername \"\" -n --noplugin -i NONE +0 -u \"#{vimrc(id)}\" -W \"#{log(id)}\" \"#{input(id, type)}\""
-        debug(vimcmd)
-        system(vimcmd)
+        system(*vim_cmd(GOLFVIM, id, type, ['-Z', '--servername', '', '-W', log(id)]))
 
         if $?.exitstatus.zero?
           diff = `#{GOLFDIFF} \"#{input(id, type)}\" \"#{output(id)}\"`
@@ -118,7 +111,48 @@ module VimGolf
       end
     end
 
+    desc 'absorb ID', "Inspect existing solution from clipboard"
+    def absorb(id)
+      type = download(id)
+      log = Keylog.parse_encoded `pbpaste`.strip
+      keys = log.to_a
+      pos = 0
+
+      system(*vim_cmd('mvim', id, type, ['--servername', 'VIMGOLF']))
+
+      begin
+        tty_state = `stty -g`
+        system 'stty raw -echo -icanon isig' if $?.success?
+        while pos < keys.length and char = $stdin.getbyte
+          print keys[pos]
+          send_to_remote_vim keys[pos]
+          $stdout.flush
+          pos += 1
+        end
+        print "\n"
+      ensure
+        system "stty #{tty_state}" unless tty_state.empty?
+      end
+    end
+
     no_tasks do
+      def send_to_remote_vim(cmd)
+        system 'vim', '--servername', 'VIMGOLF', '--remote-send', cmd
+      end
+
+      # - n - no swap file, memory only editing # - +0 - always start on line 0
+      # - --noplugin - don't load any plugins, lets be fair!
+      # -i NONE - don't load .viminfo (for saved macros and the like)
+      # - u - load vimgolf .vimrc to level the playing field
+      def vim_cmd(vim, id, type, args)
+        cmd = Array(vim) + %w[-n --noplugin -i NONE +0]
+        cmd << '-u' << vimrc(id)
+        cmd.concat args
+        cmd << input(id, type)
+        debug cmd.inspect
+        cmd
+      end
+
       def download(id)
         begin
           url = URI.parse("#{GOLFHOST}/challenges/#{id}.yaml")
