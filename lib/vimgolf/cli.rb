@@ -118,9 +118,11 @@ module VimGolf
       keys = log.to_a
       pos = 0
 
+      # FIXME: gvim
       system(*vim_cmd('mvim', id, type, ['--servername', 'VIMGOLF']))
 
       begin
+        # FIXME: cross-platform?
         tty_state = `stty -g`
         system 'stty raw -echo -icanon isig' if $?.success?
         while pos < keys.length and char = $stdin.getbyte
@@ -129,18 +131,37 @@ module VimGolf
           $stdout.flush
           pos += 1
         end
-        print "\n"
       ensure
         system "stty #{tty_state}" unless tty_state.empty?
       end
+      print "\n"
     end
 
     no_tasks do
       def send_to_remote_vim(cmd)
-        system 'vim', '--servername', 'VIMGOLF', '--remote-send', cmd
+        # FIXME: be smarter about escaping
+        cmd = '\\\\' if cmd[0,1] == '\\'
+        cmd = '\\' + cmd if cmd[0,1] == '<'
+        expr = %{feedkeys("#{cmd.gsub('"', '\"')}", 't')}
+        silence_stdout {
+          system('vim', '--servername', 'VIMGOLF', '--remote-expr', expr)
+        }
       end
 
-      # - n - no swap file, memory only editing # - +0 - always start on line 0
+      NULL = defined?(File::NULL) ? File::NULL : File.exist?('/dev/null') ? '/dev/null' : 'NUL'
+
+      def silence_stdout
+        out = STDOUT.dup
+        STDOUT.reopen NULL
+        begin
+          yield
+        ensure
+          STDOUT.reopen out
+        end
+      end
+
+      # - n - no swap file, memory only editing
+      # - +0 - always start on line 0
       # - --noplugin - don't load any plugins, lets be fair!
       # -i NONE - don't load .viminfo (for saved macros and the like)
       # - u - load vimgolf .vimrc to level the playing field
